@@ -1,0 +1,7 @@
+DROP TABLE IF EXISTS embed_tokens;
+DROP TABLE IF EXISTS participant_scores;
+DROP TABLE IF EXISTS vote_submissions;
+DROP TABLE IF EXISTS votes;
+DROP TABLE IF EXISTS options;
+DROP TABLE IF EXISTS polls;
+DROP TABLE IF EXISTS events;

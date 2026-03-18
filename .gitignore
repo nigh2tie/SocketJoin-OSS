@@ -1,0 +1,42 @@
+# Go build cache & binary
+.gocache/
+/api
+tmp_server
+*.exe
+*.test
+debug
+
+# Node dependencies & SvelteKit
+node_modules/
+.svelte-kit/
+view/build/
+view/.svelte-kit/
+.npmrc
+
+# Private documentation & Tasks
+Docs/
+AGENTS.md
+tasks/
+GEMINI.md
+.gemini/
+
+# Environment files
+.env*
+!.env.example
+
+# Local test/debug artifacts
+cookies.txt
+cookies.txt.bak
+headers*.txt
+*.log
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+.claude/
+
+# Infrastructure local data
+db_data/
+redis_data/

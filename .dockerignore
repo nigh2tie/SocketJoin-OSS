@@ -1,0 +1,12 @@
+.git
+.gocache
+vendor
+*.test
+*.prof
+*.log
+.env*
+tasks/
+Docs/
+view/node_modules/
+view/.svelte-kit/
+view/build/
