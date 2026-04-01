@@ -19,6 +19,7 @@ package hub
 import (
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"strings"
@@ -52,7 +53,7 @@ var upgrader = websocket.Upgrader{
 
 		// Allow same-origin requests securely
 		if originURL, err := url.Parse(origin); err == nil {
-			if originURL.Host == r.Host {
+			if sameOriginHost(originURL.Host, r.Host) {
 				return true
 			}
 		}
@@ -61,8 +62,40 @@ var upgrader = websocket.Upgrader{
 		if frontendURL == "" {
 			frontendURL = "http://localhost:3000"
 		}
+		if allowedURL, err := url.Parse(frontendURL); err == nil {
+			if originURL, err := url.Parse(origin); err == nil && sameOriginHost(originURL.Host, allowedURL.Host) {
+				return true
+			}
+		}
 		return strings.EqualFold(origin, frontendURL)
 	},
+}
+
+func sameOriginHost(a, b string) bool {
+	hostA, portA := normalizeHostPort(a)
+	hostB, portB := normalizeHostPort(b)
+	return portA == portB && hostA == hostB
+}
+
+func normalizeHostPort(raw string) (string, string) {
+	if raw == "" {
+		return "", ""
+	}
+
+	host := raw
+	port := ""
+	if parsed, err := url.Parse("//" + raw); err == nil {
+		host = parsed.Hostname()
+		port = parsed.Port()
+	}
+
+	if host == "localhost" {
+		host = "127.0.0.1"
+	} else if addr, err := netip.ParseAddr(host); err == nil && addr.IsLoopback() {
+		host = "127.0.0.1"
+	}
+
+	return strings.ToLower(host), port
 }
 
 // Client is a middleman between the websocket connection and the hub.

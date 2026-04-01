@@ -1,18 +1,18 @@
 # Build Stage
-FROM node:22-alpine AS builder
+FROM node:24.14.0-alpine3.23 AS builder
 
 WORKDIR /app
 
 # Copy package files and install dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 # Copy source code and build the SPA
 COPY . .
 RUN npm run build
 
 # Run Stage
-FROM nginx:alpine
+FROM nginx:1.29.7-alpine3.23
 
 # Copy the compiled static assets
 COPY --from=builder /app/build /usr/share/nginx/html

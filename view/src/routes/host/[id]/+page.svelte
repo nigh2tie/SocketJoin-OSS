@@ -22,6 +22,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
     import { goto } from '$app/navigation';
     import { questions } from '$lib/store';
     import { connect, disconnect } from '$lib/ws';
+    import { getCsrfToken, ensureCsrfToken } from '$lib/api';
 
     import Toast from '$lib/components/Toast.svelte';
     import ConfirmModal from '$lib/components/ConfirmModal.svelte';
@@ -53,6 +54,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
     /** @type {any[]} */
     let rankingData = [];
     let showRanking = false;
+    let updatingQaVisibility = false;
 
     // Moderators
     /** @type {any[]} */
@@ -84,7 +86,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
     }
 
     onMount(async () => {
-        await fetch('/api/csrf', { method: 'GET' });
+        await ensureCsrfToken();
 
         try {
             const eventRes = await fetch(`/api/events/${eventId}`);
@@ -127,14 +129,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         disconnect();
     });
 
-    function getCsrfToken() {
-        if (typeof document !== 'undefined') {
-            const match = document.cookie.match(new RegExp('(^| )csrf_token=([^;]+)'));
-            if (match) return match[2];
-        }
-        return '';
-    }
-
     // ---- Event Edit / Delete ----
 
     async function saveTitle() {
@@ -173,6 +167,33 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         if (res.ok) {
             rankingData = await res.json();
             showRanking = true;
+        } else {
+            showToast('ランキングの取得に失敗しました。', 'error');
+        }
+    }
+
+    async function toggleScreenQaVisibility() {
+        if (!createdEvent || createdEvent.role !== 'host') return;
+
+        const nextValue = !createdEvent.show_qa_on_screen;
+        updatingQaVisibility = true;
+        try {
+            const res = await fetch(`/api/events/${eventId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ show_qa_on_screen: nextValue }),
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() }
+            });
+            if (!res.ok) {
+                showToast('投影画面のQ&A表示設定を更新できませんでした。', 'error');
+                return;
+            }
+            createdEvent = { ...createdEvent, show_qa_on_screen: nextValue };
+            showToast(nextValue ? '投影画面のQ&A表示を有効にしました。' : '投影画面のQ&A表示を無効にしました。');
+        } catch (err) {
+            console.error('toggleScreenQaVisibility failed', err);
+            showToast('投影画面のQ&A表示設定を更新できませんでした。', 'error');
+        } finally {
+            updatingQaVisibility = false;
         }
     }
 
@@ -197,12 +218,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         </h1>
         <div class="flex gap-2">
             <button on:click={fetchRanking} class="px-3 py-2 bg-yellow-100 text-yellow-800 font-medium hover:bg-yellow-200 rounded-lg transition text-sm">ランキング</button>
-            <a href="/host" class="px-4 py-2 bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 rounded-lg transition text-sm">一覧に戻る</a>
+            <a href="/host" class="px-4 py-2 bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 rounded-lg transition text-sm">Topに戻る</a>
         </div>
     </div>
 
     {#if createdEvent}
     <div class="space-y-6">
+
+        <RankingCard {rankingData} show={showRanking} onClose={() => showRanking = false} />
 
         <!-- Tab Navigation -->
         <div class="flex gap-2 border-b border-gray-200 mb-6 w-full overflow-x-auto">
@@ -244,6 +267,28 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
                 </p>
             </div>
             {#if createdEvent.role === 'host'}
+                <div class="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <h3 class="text-sm font-semibold text-gray-900">投影URLのQ&A表示</h3>
+                            <p class="mt-1 text-xs text-gray-500">質問が存在していても、投影画面のQ&Aパネルを表示しないように切り替えられます。</p>
+                        </div>
+                        <button
+                            type="button"
+                            class={`min-w-[92px] px-3 py-2 rounded-lg text-sm font-bold transition ${createdEvent.show_qa_on_screen ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                            on:click={toggleScreenQaVisibility}
+                            disabled={updatingQaVisibility}
+                        >
+                            {#if updatingQaVisibility}
+                                更新中...
+                            {:else if createdEvent.show_qa_on_screen}
+                                ON
+                            {:else}
+                                OFF
+                            {/if}
+                        </button>
+                    </div>
+                </div>
                 <div class="mt-4 flex gap-2">
                     <button on:click={downloadTemplate} class="px-3 py-1.5 text-xs bg-green-50 text-green-700 hover:bg-green-100 rounded-lg border border-green-200">CSVテンプレート</button>
                     <button on:click={exportCSV} class="px-3 py-1.5 text-xs bg-green-50 text-green-700 hover:bg-green-100 rounded-lg border border-green-200">結果CSVエクスポート</button>
@@ -266,8 +311,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <!-- Left Column: Main Poll Controls -->
             <div class="lg:col-span-2 space-y-6">
-                <RankingCard {rankingData} show={showRanking} onClose={() => showRanking = false} />
-
                 {#if createdEvent.role === 'host'}
                     <PollForm
                         {eventId}

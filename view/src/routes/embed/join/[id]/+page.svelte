@@ -21,23 +21,23 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
     import { page } from '$app/stores';
     import { poll, connectionStatus, event, nickname, questions } from '$lib/store';
     import { connect, disconnect } from '$lib/ws';
+    import { fetchEventHistory, submitPollVote, ensureCsrfToken } from '$lib/api';
+    import { votedPollsStore, markPollAsVoted, hasVotedForPoll } from '$lib/storage';
+
+    import BottomNav from '$lib/components/BottomNav.svelte';
+    import QaTab from '$lib/components/QaTab.svelte';
 
     export let data;
 
-    let hasJoined = false;
     /** @type {string[]} */
     let selectedOptionIds = [];
-    let hasVoted = false;
     let errorMessage = '';
 
-    let currentTab = 'poll'; // 'poll', 'qa', 'list'
+    let currentTab = 'poll';
     /** @type {string | null} */
     let activePollIdForRedirect = null;
     /** @type {any[]} */
     let voteHistory = [];
-    
-    let newQuestionContent = '';
-    let questionError = '';
 
     let embedAccess = false;
     let checkingAccess = true;
@@ -45,6 +45,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
     $: maxSel = $poll?.max_selections ?? 1;
     $: isMulti = maxSel > 1;
+    $: hasVoted = $poll ? hasVotedForPoll($poll.id, $votedPollsStore) : false;
 
     onMount(async () => {
         if (data.error || !data.event) {
@@ -52,7 +53,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
             checkingAccess = false;
             return;
         }
-        await fetch('/api/csrf', { method: 'GET' });
+        await ensureCsrfToken();
 
         // Validate Embed Token first
         const token = $page.url.searchParams.get('token');
@@ -69,14 +70,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
                 event.set(data.event);
                 connect(data.event.id);
                 nickname.set('Anonymous Viewer');
-                hasJoined = true;
-                
+
                 // Fetch existing questions
                 fetch(`/api/events/${data.event.id}/questions`)
                     .then(res => res.json())
                     .then(qs => questions.set(qs || []));
 
-                loadHistory();
+                voteHistory = await fetchEventHistory(data.event.id);
             } else {
                 accessError = "アクセスが拒否されました";
             }
@@ -93,40 +93,16 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
     // Reset selection and force tab switch when poll changes
     $: if ($poll) {
         if ($poll.id !== activePollIdForRedirect) {
-            checkVoted($poll.id);
             selectedOptionIds = [];
-            
+
             // If the poll is freshly opened, force the user back to the poll tab
             if ($poll.status === 'open') {
                 currentTab = 'poll';
             }
             activePollIdForRedirect = $poll.id;
         } else if ($poll.status === 'open' && hasVoted === false) {
-             checkVoted($poll.id);
+            selectedOptionIds = [];
         }
-    }
-
-    /** @param {string} pollID */
-    function checkVoted(pollID) {
-        const votedPolls = JSON.parse(localStorage.getItem('voted_polls') || '[]');
-        hasVoted = votedPolls.includes(pollID);
-    }
-
-    async function loadHistory() {
-        try {
-            const res = await fetch(`/api/events/${data.event.id}/history`);
-            if (res.ok) {
-                voteHistory = await res.json();
-            }
-        } catch (err) {
-            console.error('Failed to load history', err);
-        }
-    }
-
-    function getCsrfToken() {
-        const match = document.cookie.match(new RegExp('(^| )csrf_token=([^;]+)'));
-        if (match) return match[2];
-        return '';
     }
 
     /** @param {string} optId */
@@ -148,69 +124,30 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         if (selectedOptionIds.length === 0 || hasVoted || !$poll || $poll.status === 'closed') return;
 
         errorMessage = '';
-        const res = await fetch(`/api/poll/${$poll.id}/vote`, {
-            method: 'POST',
-            body: JSON.stringify({
-                option_ids: selectedOptionIds,
-                nickname: $nickname
-            }),
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': getCsrfToken()
-            }
-        });
-
-        if (res.ok) {
-            hasVoted = true;
-            const votedPolls = JSON.parse(localStorage.getItem('voted_polls') || '[]');
-            votedPolls.push($poll.id);
-            localStorage.setItem('voted_polls', JSON.stringify(votedPolls));
-        } else {
-            const txt = await res.text();
-            if (txt.includes('banned')) {
-                errorMessage = 'アクセスが制限されています。';
-            } else if (txt.includes('already voted')) {
-                errorMessage = 'すでに投票済みです。';
-                hasVoted = true;
+        try {
+            await submitPollVote($poll.id, selectedOptionIds, $nickname);
+            markPollAsVoted($poll.id);
+        } catch (err) {
+            if (err instanceof Error) {
+                if (err.message === 'accessed_denied') {
+                    errorMessage = 'アクセスが制限されています。';
+                } else if (err.message === 'already_voted') {
+                    errorMessage = 'すでに投票済みです。';
+                    markPollAsVoted($poll.id);
+                } else {
+                    errorMessage = err.message || 'エラーが発生しました。';
+                }
             } else {
                 errorMessage = 'エラーが発生しました。';
             }
         }
     }
 
-    async function submitQuestion() {
-        if (!newQuestionContent.trim()) return;
-        questionError = '';
-        try {
-            const res = await fetch(`/api/events/${data.event.id}/questions`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': getCsrfToken()
-                },
-                body: JSON.stringify({ content: newQuestionContent.trim() })
-            });
-
-            if (res.ok) {
-                newQuestionContent = '';
-            } else {
-                const txt = await res.text();
-                questionError = txt || '投稿に失敗しました';
-            }
-        } catch (e) {
-            questionError = '通信エラーが発生しました';
-        }
-    }
-
-    /** @param {string} qid */
-    async function toggleUpvote(qid) {
-        try {
-            await fetch(`/api/events/${data.event.id}/questions/${qid}/upvote`, {
-                method: 'POST',
-                headers: { 'X-CSRF-Token': getCsrfToken() }
-            });
-        } catch (e) {
-            console.error('Failed to toggle upvote', e);
+    /** @param {string} tab */
+    async function handleTabChange(tab) {
+        currentTab = tab;
+        if (tab === 'history') {
+            voteHistory = await fetchEventHistory(data.event.id);
         }
     }
 </script>
@@ -220,8 +157,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         <div class="card"><p class="loading">アクセスを確認中...</p></div>
     {:else if !embedAccess}
         <div class="card"><p class="error">{accessError}</p></div>
-    {:else if !hasJoined}
-        <div class="card"><p class="loading">読み込み中...</p></div>
     {:else}
         <div class="header">
             <span>イベント: {data.event.title}</span>
@@ -241,7 +176,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
                     <h2 class="text-xl font-bold text-gray-800 mt-4">現在、実施中の投票はありません</h2>
                     <p class="text-gray-500 mt-2">主催者が投票を開始すると、ここに表示されます。</p>
                     <div class="mt-8 flex flex-col gap-3">
-                        <button class="px-6 py-2 bg-blue-100 text-blue-700 font-bold rounded-lg hover:bg-blue-200" on:click={() => currentTab = 'list'}>これまでの投票を見る</button>
+                        <button class="px-6 py-2 bg-blue-100 text-blue-700 font-bold rounded-lg hover:bg-blue-200" on:click={() => handleTabChange('history')}>これまでの投票を見る</button>
                         <button class="px-6 py-2 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200" on:click={() => currentTab = 'qa'}>質問を送る (Q&A)</button>
                     </div>
                 </div>
@@ -290,40 +225,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
                     {/if}
                 </div>
             {/if}
-        {:else if currentTab === 'qa'}
-            <div class="qa-view card">
-                <h2 class="text-xl font-bold mb-4 text-gray-800 border-b pb-2">Q&A (質問と回答)</h2>
-                <div class="qa-input-area">
-                    <textarea bind:value={newQuestionContent} placeholder="質問を入力してください..." rows="3"></textarea>
-                    <button class="submit-question-btn" on:click={submitQuestion} disabled={!newQuestionContent.trim()}>
-                        質問を投稿する
-                    </button>
-                    {#if questionError}
-                        <p class="error">{questionError}</p>
-                    {/if}
-                </div>
-                
-                <div class="qa-list mt-6">
-                    {#if $questions.length === 0}
-                        <p class="empty-msg">まだ質問がありません。</p>
-                    {:else}
-                        {#each $questions as q (q.id)}
-                            <div class="qa-item">
-                                <div class="qa-content">{q.content}</div>
-                                <div class="qa-meta">
-                                    <span class="qa-status {q.status}">{q.status === 'answered' ? '回答済み' : '受付中'}</span>
-                                    <span class="qa-date">{new Date(q.created_at).toLocaleString()}</span>
-                                </div>
-                                <button class="upvote-btn" class:upvoted={q.is_upvoted} on:click={() => toggleUpvote(q.id)}>
-                                    <span class="upvote-icon">▲</span> {q.upvotes}
-                                </button>
-                            </div>
-                        {/each}
-                    {/if}
-                </div>
-            </div>
-        {:else if currentTab === 'list'}
-            <div class="list-view card">
+        {:else if currentTab === 'history'}
+            <div class="history-view card">
                 <h2 class="text-xl font-bold mb-4 text-gray-800 border-b pb-2">投票一覧 (履歴)</h2>
                 {#if voteHistory.length === 0}
                     <p class="empty-msg text-gray-400 py-10">まだ回答済みの投票がありません。</p>
@@ -348,23 +251,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
                     </ul>
                 {/if}
             </div>
+        {:else if currentTab === 'qa'}
+            <QaTab eventId={data.event.id} />
         {/if}
 
-        <!-- Bottom Navigation Bar for Embed -->
-        <nav class="bottom-nav">
-            <button class="nav-btn" class:active={currentTab === 'poll'} on:click={() => currentTab = 'poll'}>
-                <svg xmlns="http://www.w3.org/2000/svg" class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                <span class="nav-label">投票中</span>
-            </button>
-            <button class="nav-btn" class:active={currentTab === 'list'} on:click={() => { currentTab = 'list'; loadHistory(); }}>
-                <svg xmlns="http://www.w3.org/2000/svg" class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                <span class="nav-label">一覧</span>
-            </button>
-            <button class="nav-btn" class:active={currentTab === 'qa'} on:click={() => currentTab = 'qa'}>
-                <svg xmlns="http://www.w3.org/2000/svg" class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                <span class="nav-label">Q&A</span>
-            </button>
-        </nav>
+        <BottomNav {currentTab} onTabChange={handleTabChange} />
     {/if}
 </div>
 
@@ -393,7 +284,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         border: 1px solid rgba(255,255,255,0.7);
         margin-bottom: 20px;
     }
-    
+
     h2 { font-size: 1.25rem; color: #1e293b; margin-top: 0; }
 
     .header {
@@ -403,7 +294,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         margin-bottom: 24px;
         padding: 0 8px;
     }
-    .event-title { font-weight: 700; color: #334155; font-size: 0.9rem; }
     .status {
         font-size: 0.75rem;
         padding: 4px 10px;
@@ -451,50 +341,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
     .voted-msg { background: #f0fdf4; color: #166534; padding: 16px; text-align: center; border-radius: 14px; margin-top: 24px; font-size: 0.95rem; font-weight: 600; border: 1px solid #bbfcce; }
     .voted-msg.closed { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
-    
+
     .error { color: #ef4444; text-align: center; margin-top: 12px; font-size: 0.85rem; font-weight: 500; }
     .loading { color: #64748b; text-align: center; margin-top: 40px; font-weight: 500; }
-
-    .qa-input-area { display: flex; flex-direction: column; gap: 12px; }
-    .qa-input-area textarea {
-        padding: 16px; border: 2px solid #e2e8f0; border-radius: 14px;
-        resize: vertical; font-size: 0.95rem; font-family: inherit;
-        transition: border-color 0.2s;
-    }
-    .qa-input-area textarea:focus { outline: none; border-color: #3b82f6; }
-    .submit-question-btn { background: #0891b2; width: 100%; border-radius: 14px; padding: 14px; font-weight: 700; border: none; color: white; cursor: pointer; transition: all 0.2s; }
-    .submit-question-btn:hover:not(:disabled) { background: #0e7490; transform: translateY(-1px); }
-
-    .qa-item { padding: 16px; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; display: flex; flex-direction: column; position: relative; margin-bottom: 12px; }
-    .qa-content { font-size: 1rem; margin-bottom: 12px; white-space: pre-wrap; padding-right: 60px; color: #1e293b; }
-    .qa-meta { font-size: 0.75rem; color: #94a3b8; display: flex; gap: 12px; align-items: center; }
-    .qa-status.answered { color: #10b981; font-weight: 700; background: #ecfdf5; padding: 2px 8px; border-radius: 6px; }
-
-    .upvote-btn {
-        position: absolute; right: 12px; top: 12px;
-        padding: 6px 12px; background: #f8fafc; border: 1px solid #e2e8f0;
-        border-radius: 20px; color: #64748b; font-size: 0.85rem;
-        display: flex; align-items: center; gap: 6px; cursor: pointer; transition: all 0.2s;
-    }
-    .upvote-btn.upvoted { background: #3b82f6; color: white; border-color: #3b82f6; font-weight: 600; }
-
-    /* Bottom Nav Bar */
-    .bottom-nav {
-        position: fixed; bottom: 0; left: 0; right: 0; height: 75px;
-        background: rgba(255, 255, 255, 0.85);
-        backdrop-filter: blur(20px);
-        border-top: 1px solid rgba(0,0,0,0.05);
-        display: flex; z-index: 1000;
-        padding: 0 10px;
-    }
-    .nav-btn {
-        flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-        gap: 6px; background: transparent; border: none; color: #94a3b8; border-radius: 0;
-        cursor: pointer; padding: 0; transition: all 0.2s;
-    }
-    .nav-btn.active { color: #3b82f6; transform: translateY(-2px); }
-    .nav-icon { width: 26px; height: 26px; }
-    .nav-label { font-size: 0.75rem; font-weight: 700; }
 
     .empty-msg { color: #94a3b8; text-align: center; padding: 40px 20px; }
 </style>

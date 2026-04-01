@@ -19,22 +19,15 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 <script>
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
+    import { getCsrfToken, ensureCsrfToken } from '$lib/api';
     
     let title = '';
     let nicknamePolicy = 'optional'; // hidden, optional, required
     
     onMount(async () => {
         // Init CSRF cookie from the backend API
-        await fetch('/api/csrf', { method: 'GET' });
+        await ensureCsrfToken();
     });
-
-    function getCsrfToken() {
-        if (typeof document !== 'undefined') {
-            const match = document.cookie.match(new RegExp('(^| )csrf_token=([^;]+)'));
-            if (match) return match[2];
-        }
-        return '';
-    }
 
     let toastMessage = '';
     let toastType = 'success';
@@ -112,7 +105,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
                     <input type="radio" value="optional" bind:group={nicknamePolicy} class="accent-blue-600 w-4 h-4 mr-3" />
                     <div>
                         <div class="font-medium text-gray-900">任意入力</div>
-                        <div class="text-xs text-gray-500 mt-1">MVPデフォルト</div>
+                        <div class="text-xs text-gray-500 mt-1">デフォルト</div>
                     </div>
                 </label>
                 <label class="flex items-center cursor-pointer p-3 border rounded-lg hover:bg-gray-50 flex-1 transition" class:border-blue-500={nicknamePolicy === 'required'} class:bg-blue-50={nicknamePolicy === 'required'}>

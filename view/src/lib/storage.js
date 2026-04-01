@@ -39,6 +39,20 @@ export function markPollAsVoted(pollId) {
 
 /**
  * @param {string} pollId
+ */
+export function clearPollVotedState(pollId) {
+    votedPollsStore.update(polls => {
+        if (!polls.includes(pollId)) {
+            return polls;
+        }
+        const newPolls = polls.filter(id => id !== pollId);
+        if (isBrowser) localStorage.setItem('voted_polls', JSON.stringify(newPolls));
+        return newPolls;
+    });
+}
+
+/**
+ * @param {string} pollId
  * @param {string[]} polls
  * @returns {boolean}
  */
@@ -59,4 +73,3 @@ export function saveNickname(name) {
 export function getSavedNickname() {
     return isBrowser ? localStorage.getItem('nickname') : null;
 }
-

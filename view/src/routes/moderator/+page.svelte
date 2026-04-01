@@ -20,13 +20,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
     import { goto } from '$app/navigation';
+    import { getCsrfToken, ensureCsrfToken } from '$lib/api';
 
     let errorMsg = '';
     let loading = true;
 
     onMount(async () => {
         // Ensure CSRF token is available
-        await fetch('/api/csrf', { method: 'GET' });
+        await ensureCsrfToken();
 
         const token = $page.url.searchParams.get('token');
         if (!token) {
@@ -36,14 +37,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         }
 
         try {
-            function getCsrfToken() {
-                if (typeof document !== 'undefined') {
-                    const match = document.cookie.match(new RegExp('(^| )csrf_token=([^;]+)'));
-                    if (match) return match[2];
-                }
-                return '';
-            }
-
             const res = await fetch('/api/moderator/login', {
                 method: 'POST',
                 body: JSON.stringify({ token }),

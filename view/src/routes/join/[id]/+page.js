@@ -17,9 +17,12 @@
 /** @type {import('./$types').PageLoad} */
 export const load = async ({ fetch, params }) => {
     try {
-        const res = await fetch(`/api/events/${params.id}`); // Fetch Event
-        const event = await res.json();
-        return { event };
+        const res = await fetch(`/api/events/${params.id}`);
+        if (res.ok) {
+            const event = await res.json();
+            return { event };
+        }
+        return { error: 'Event not found' };
     } catch (/** @type {any} */ e) {
         return { error: e.message };
     }

@@ -33,6 +33,7 @@ type Event struct {
 	Status         string        `json:"status"` // live, closed
 	CurrentPollID  uuid.NullUUID `json:"current_poll_id"`
 	NicknamePolicy string        `json:"nickname_policy"` // hidden, optional, required
+	ShowQAOnScreen bool          `json:"show_qa_on_screen"`
 	CreatedAt      time.Time     `json:"created_at"`
 	Role           string        `json:"role,omitempty"` // "host", "moderator"
 }
@@ -222,7 +223,7 @@ const addQuizScoresSQL = `
 	),
 	voter_selections AS (
 		SELECT v.visitor_id,
-		       MAX(v.nickname) AS nickname,
+		       COALESCE(NULLIF(MAX(v.nickname), ''), 'Anonymous') AS nickname,
 		       ARRAY_AGG(v.option_id ORDER BY v.option_id) AS selected_ids
 		FROM votes v
 		WHERE v.poll_id = $1
@@ -232,9 +233,6 @@ const addQuizScoresSQL = `
 		SELECT vs.visitor_id, vs.nickname
 		FROM voter_selections vs, correct_set cs
 		WHERE vs.selected_ids = cs.correct_ids
-		  AND vs.nickname IS NOT NULL
-		  AND vs.nickname != ''
-		  AND vs.nickname != 'Anonymous'
 	)
 	INSERT INTO participant_scores (event_id, visitor_id, nickname, total_score)
 	SELECT pi.event_id, cv.visitor_id, cv.nickname, pi.points

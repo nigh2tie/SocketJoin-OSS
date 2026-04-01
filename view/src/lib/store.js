@@ -22,6 +22,7 @@ import { writable } from 'svelte/store';
  * @property {string} title
  * @property {string} status
  * @property {string|null} current_poll_id
+ * @property {boolean} show_qa_on_screen
  */
 
 /** @type {import('svelte/store').Writable<Event|null>} */

@@ -20,6 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
     import { onMount, onDestroy } from 'svelte';
     import { poll, votes, connectionStatus, event, ranking, questions } from '$lib/store';
     import { connect, disconnect } from '$lib/ws';
+    import { ensureCsrfToken } from '$lib/api';
 
     export let data;
 
@@ -27,10 +28,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
     // Show ranking overlay when quiz poll closes and ranking is available
     $: showRankingOverlay = $poll?.is_quiz && $poll?.status === 'closed' && $ranking.length > 0;
+    $: showQaPanel = Boolean($event?.show_qa_on_screen) && $questions.length > 0;
 
     onMount(async () => {
         if (data.error || !data.event) return;
-        await fetch('/api/csrf', { method: 'GET' });
+        await ensureCsrfToken();
         event.set(data.event);
         connect(data.event.id);
 
@@ -68,13 +70,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
         <div style="color:white;text-align:center;padding:40px">イベントが見つかりません。</div>
     {:else}
     <div class="header">
-        <div class="event-title">{data.event.title}</div>
+        <div class="event-title">{$event?.title ?? data.event.title}</div>
         <div class="join-info">
-            参加URL: <span>{typeof window !== 'undefined' ? window.location.origin : ''}/join/{data.event.id}</span>
+            参加URL: <span>{typeof window !== 'undefined' ? window.location.origin : ''}/join/{$event?.id ?? data.event.id}</span>
         </div>
     </div>
 
-    <div class="content" class:split-view={$questions.length > 0}>
+    <div class="content" class:split-view={showQaPanel}>
         <div class="main-panel">
             {#if !$poll}
                 <div class="waiting">
@@ -133,7 +135,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
             {/if}
         </div>
 
-        {#if $questions.length > 0}
+        {#if showQaPanel}
             <div class="qa-side-panel">
                 <h2 class="qa-side-title">Q&A</h2>
                 <div class="qa-side-list">

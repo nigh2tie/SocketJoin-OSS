@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://localhost:3000}"
+BASE_URL="${BASE_URL:-${FRONTEND_URL:-http://localhost:3000}}"
 COOKIE_JAR=$(mktemp)
 trap 'rm -f "$COOKIE_JAR" "$COOKIE_JAR.bak"' EXIT
 

@@ -17,8 +17,8 @@
 
 set -euo pipefail
 
-APP_URL="${APP_URL:-http://localhost:3000}"
-DIRECT_URL="${DIRECT_URL:-http://localhost:8080}"
+APP_URL="${APP_URL:-${FRONTEND_URL:-http://localhost:3000}}"
+DIRECT_URL="${DIRECT_URL:-${VITE_API_URL:-http://localhost:8080}}"
 COOKIE_JAR=$(mktemp)
 HEADER_8080=$(mktemp)
 HEADER_3000=$(mktemp)

@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -37,12 +38,40 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://user:password@localhost:5432/socketjoin?sslmode=disable"
+		user := os.Getenv("POSTGRES_USER")
+		if user == "" {
+			user = "user"
+		}
+		pass := os.Getenv("POSTGRES_PASSWORD")
+		if pass == "" {
+			pass = "password"
+		}
+		host := os.Getenv("POSTGRES_HOST")
+		if host == "" {
+			host = "localhost"
+		}
+		port := os.Getenv("POSTGRES_PORT")
+		if port == "" {
+			port = "5432"
+		}
+		db := os.Getenv("POSTGRES_DB")
+		if db == "" {
+			db = "socketjoin"
+		}
+		dbURL = "postgres://" + user + ":" + pass + "@" + host + ":" + port + "/" + db + "?sslmode=disable"
 	}
 
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
-		redisURL = "redis://localhost:6379/0"
+		host := os.Getenv("REDIS_HOST")
+		if host == "" {
+			host = "localhost"
+		}
+		port := os.Getenv("REDIS_PORT")
+		if port == "" {
+			port = "6379"
+		}
+		redisURL = "redis://" + host + ":" + port + "/0"
 	}
 
 	// Connect to Postgres
@@ -67,6 +96,12 @@ func main() {
 	srv := server.NewServer(pg, rdb, h)
 
 	// Start Data Retention Policy (Background Job)
+	pollRetentionDays := 90
+	if v := os.Getenv("POLL_RETENTION_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			pollRetentionDays = n
+		}
+	}
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
@@ -80,8 +115,8 @@ func main() {
 				slog.Info("Data retention cleanup skipped (another instance is running)")
 				continue
 			}
-			slog.Info("Running data retention cleanup...")
-			deleted, err := pg.DeleteOldPolls(context.Background(), 90)
+			slog.Info("Running data retention cleanup...", "retention_days", pollRetentionDays)
+			deleted, err := pg.DeleteOldPolls(context.Background(), pollRetentionDays)
 			if err != nil {
 				slog.Error("Data retention cleanup failed", "error", err)
 			} else {
@@ -90,7 +125,10 @@ func main() {
 		}
 	}()
 
-	port := os.Getenv("PORT")
+	port := os.Getenv("APP_PORT")
+	if port == "" {
+		port = os.Getenv("PORT")
+	}
 	if port == "" {
 		port = "8080"
 	}

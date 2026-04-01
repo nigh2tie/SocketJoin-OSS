@@ -14,7 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import { poll, votes, connectionStatus, ranking, questions } from './store';
+import { poll, votes, connectionStatus, ranking, questions, event } from './store';
+import { clearPollVotedState } from './storage';
 import { get } from 'svelte/store';
 
 /** @type {WebSocket | null} */
@@ -116,12 +117,8 @@ function openSocket(eventID) {
                     {
                         const currentPoll = get(poll);
                         if (currentPoll && data?.payload && currentPoll.id === data.payload.poll_id) {
-                            // Clear localStorage voted flag so participants can vote again
-                            try {
-                                const votedPolls = JSON.parse(localStorage.getItem('voted_polls') || '[]');
-                                const updated = votedPolls.filter(/** @param {string} id */ id => id !== data.payload.poll_id);
-                                localStorage.setItem('voted_polls', JSON.stringify(updated));
-                            } catch {}
+                            // Clear persisted and in-memory voted state so participants can vote again.
+                            clearPollVotedState(data.payload.poll_id);
                             votes.set({});
                             // Update poll object to trigger $: if ($poll) reactive block in join page,
                             // which calls checkVoted and will now find hasVoted=false.
@@ -134,8 +131,10 @@ function openSocket(eventID) {
                         // 新しい Poll 情報が直接送られてきた場合
                         poll.set(data.payload.poll);
                         votes.set(data.payload.counts || {});
+                        event.update((e) => e ? { ...e, current_poll_id: data.payload.current_poll_id ?? data.payload.poll.id } : e);
                     } else if (data?.payload?.current_poll_id) {
                         // poll 移行時（互換性/フォールバック）
+                        event.update((e) => e ? { ...e, current_poll_id: data.payload.current_poll_id } : e);
                         fetch(`/api/poll/${data.payload.current_poll_id}`)
                             .then(res => res.json())
                             .then(newPoll => {
@@ -147,16 +146,17 @@ function openSocket(eventID) {
                                     .catch(() => votes.set({}));
                             })
                             .catch(() => {});
-                    } else if (data?.payload?.title) {
-                        // イベントタイトル更新
-                        const p = get(poll);
-                        if (p) {
-                            // イベント全体を再取得するのではなく、タイトルだけ更新
-                            // (event ストアがないため poll.event_title などがある場合はここで更新)
-                        }
                     } else {
-                        poll.set(null);
-                        votes.set({});
+                        if (data?.payload?.title !== undefined || data?.payload?.show_qa_on_screen !== undefined) {
+                            event.update((e) => e ? {
+                                ...e,
+                                ...(data.payload.title !== undefined ? { title: data.payload.title } : {}),
+                                ...(data.payload.show_qa_on_screen !== undefined ? { show_qa_on_screen: data.payload.show_qa_on_screen } : {})
+                            } : e);
+                        } else {
+                            poll.set(null);
+                            votes.set({});
+                        }
                     }
                     break;
                 case 'qa.question_created':

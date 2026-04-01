@@ -41,11 +41,12 @@ func (s *Store) CreateEvent(ctx context.Context, title string, nicknamePolicy st
 		OwnerToken:     ownerToken, // Return unhashed to user
 		Status:         "live",
 		NicknamePolicy: nicknamePolicy,
+		ShowQAOnScreen: true,
 		CreatedAt:      time.Now(),
 	}
 
-	_, err = s.db.ExecContext(ctx, "INSERT INTO events (id, title, owner_token, status, nickname_policy, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
-		event.ID, event.Title, ownerTokenHash, event.Status, event.NicknamePolicy, event.CreatedAt)
+	_, err = s.db.ExecContext(ctx, "INSERT INTO events (id, title, owner_token, status, nickname_policy, show_qa_on_screen, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+		event.ID, event.Title, ownerTokenHash, event.Status, event.NicknamePolicy, event.ShowQAOnScreen, event.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -54,8 +55,8 @@ func (s *Store) CreateEvent(ctx context.Context, title string, nicknamePolicy st
 
 func (s *Store) GetEvent(ctx context.Context, id uuid.UUID) (*Event, error) {
 	event := &Event{}
-	err := s.db.QueryRowContext(ctx, "SELECT id, title, owner_token, status, current_poll_id, nickname_policy, created_at FROM events WHERE id = $1", id).
-		Scan(&event.ID, &event.Title, &event.OwnerToken, &event.Status, &event.CurrentPollID, &event.NicknamePolicy, &event.CreatedAt)
+	err := s.db.QueryRowContext(ctx, "SELECT id, title, owner_token, status, current_poll_id, nickname_policy, show_qa_on_screen, created_at FROM events WHERE id = $1", id).
+		Scan(&event.ID, &event.Title, &event.OwnerToken, &event.Status, &event.CurrentPollID, &event.NicknamePolicy, &event.ShowQAOnScreen, &event.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -69,6 +70,11 @@ func (s *Store) UpdateEventCurrentPoll(ctx context.Context, eventID uuid.UUID, p
 
 func (s *Store) UpdateEventTitle(ctx context.Context, eventID uuid.UUID, title string) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE events SET title = $1 WHERE id = $2", title, eventID)
+	return err
+}
+
+func (s *Store) UpdateEventShowQAOnScreen(ctx context.Context, eventID uuid.UUID, show bool) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE events SET show_qa_on_screen = $1 WHERE id = $2", show, eventID)
 	return err
 }
 

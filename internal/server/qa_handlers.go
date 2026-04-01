@@ -259,6 +259,17 @@ func (s *Server) handleToggleUpvote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	banned, err := s.checkBan(r.Context(), eventID, visitorID)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "Failed to check ban status", "error", err)
+		s.jsonError(w, r, "internal check error", http.StatusInternalServerError)
+		return
+	}
+	if banned {
+		s.jsonError(w, r, "banned", http.StatusForbidden)
+		return
+	}
+
 	_, err = s.Pg.ToggleQuestionUpvote(r.Context(), eventID, questionID, visitorID)
 	if err != nil {
 		if errors.Is(err, store.ErrQuestionNotFound) {

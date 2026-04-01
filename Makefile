@@ -7,10 +7,11 @@ export
 # マイグレーション用 DSN（コンテナ内からは db ホスト名で接続）
 DB_DSN := postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@db:5432/$(POSTGRES_DB)?sslmode=disable
 COMPOSE_FILE := deploy/compose.yml
-DOCKER_COMPOSE := docker compose -f $(COMPOSE_FILE)
+ENV_FILE := .env
+DOCKER_COMPOSE := docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE)
 
 up:
-	$(DOCKER_COMPOSE) up -d
+	$(DOCKER_COMPOSE) up -d --build
 
 down:
 	$(DOCKER_COMPOSE) down

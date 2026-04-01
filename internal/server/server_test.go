@@ -89,17 +89,19 @@ func TestHandleCSVTemplate(t *testing.T) {
 		t.Errorf("Content-Disposition = %q, missing attachment", cd)
 	}
 
-	records, err := csv.NewReader(resp.Body).ReadAll()
+	reader := csv.NewReader(resp.Body)
+	reader.FieldsPerRecord = -1
+	records, err := reader.ReadAll()
 	if err != nil {
 		t.Fatalf("csv parse: %v", err)
 	}
-	// header row + 3 example rows
-	if len(records) != 4 {
-		t.Errorf("row count = %d, want 4", len(records))
+	// 5 comment rows + header row + 3 example rows
+	if len(records) != 9 {
+		t.Errorf("row count = %d, want 9", len(records))
 	}
 
 	wantHeaders := []string{"poll_title", "poll_type", "option_1", "option_2", "points", "correct_options"}
-	header := records[0]
+	header := records[5]
 	headerSet := make(map[string]struct{}, len(header))
 	for _, h := range header {
 		headerSet[h] = struct{}{}
@@ -228,9 +230,11 @@ func TestParseCSVImport(t *testing.T) {
 		},
 	}
 
+	s := service.NewPollService(nil, nil, defaultNGWords)
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			polls, errs, err := parseCSVImport([]byte(tc.input))
+			polls, errs, err := s.ParseCSVImport([]byte(tc.input))
 
 			if tc.wantFatal {
 				if err == nil {
@@ -254,8 +258,9 @@ func TestParseCSVImport(t *testing.T) {
 // TestParseCSVImport_CorrectOptionMapping verifies that is_correct is set on the
 // right options when correct_options references specific 1-based option indices.
 func TestParseCSVImport_CorrectOptionMapping(t *testing.T) {
+	s := service.NewPollService(nil, nil, defaultNGWords)
 	input := "poll_title,poll_type,option_1,option_2,option_3,correct_options\nQ,quiz,A,B,C,2\n"
-	polls, errs, err := parseCSVImport([]byte(input))
+	polls, errs, err := s.ParseCSVImport([]byte(input))
 	if err != nil || len(errs) != 0 || len(polls) != 1 {
 		t.Fatalf("unexpected: err=%v errs=%v polls=%d", err, errs, len(polls))
 	}
@@ -277,8 +282,9 @@ func TestParseCSVImport_CorrectOptionMapping(t *testing.T) {
 
 // TestParseCSVImport_MultiCorrect verifies pipe-separated correct options.
 func TestParseCSVImport_MultiCorrect(t *testing.T) {
+	s := service.NewPollService(nil, nil, defaultNGWords)
 	input := "poll_title,poll_type,option_1,option_2,option_3,correct_options\nQ,quiz,A,B,C,1|3\n"
-	polls, errs, err := parseCSVImport([]byte(input))
+	polls, errs, err := s.ParseCSVImport([]byte(input))
 	if err != nil || len(errs) != 0 || len(polls) != 1 {
 		t.Fatalf("unexpected: err=%v errs=%v polls=%d", err, errs, len(polls))
 	}

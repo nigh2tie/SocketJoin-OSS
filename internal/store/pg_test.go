@@ -242,6 +242,43 @@ func TestCloseAndScorePoll_CorrectVoterScored(t *testing.T) {
 	}
 }
 
+func TestCloseAndScorePoll_AnonymousVoterIncludedInRanking(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	event := createTestEvent(t, s)
+
+	poll, err := s.CreatePoll(ctx, event.ID, "Anonymous quiz", true, 10, 1, []store.Option{
+		{Label: "A", IsCorrect: true},
+		{Label: "B", IsCorrect: false},
+	})
+	if err != nil {
+		t.Fatalf("CreatePoll: %v", err)
+	}
+
+	if err := s.CreateVote(ctx, poll.ID, []uuid.UUID{poll.Options[0].ID}, uuid.NewString(), "Anonymous"); err != nil {
+		t.Fatalf("CreateVote anonymous: %v", err)
+	}
+
+	if err := s.CloseAndScorePoll(ctx, poll.ID); err != nil {
+		t.Fatalf("CloseAndScorePoll: %v", err)
+	}
+
+	ranking, err := s.GetRanking(ctx, event.ID, 10)
+	if err != nil {
+		t.Fatalf("GetRanking: %v", err)
+	}
+
+	if len(ranking) != 1 {
+		t.Fatalf("ranking entries = %d, want 1", len(ranking))
+	}
+	if ranking[0].Nickname != "Anonymous" {
+		t.Errorf("rank-1 nickname = %q, want Anonymous", ranking[0].Nickname)
+	}
+	if ranking[0].TotalScore != 10 {
+		t.Errorf("rank-1 score = %d, want 10", ranking[0].TotalScore)
+	}
+}
+
 func TestCloseAndScorePoll_IncorrectVoterNotScored(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

@@ -22,7 +22,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
     import { poll, connectionStatus, event, nickname, questions } from '$lib/store';
     import { connect, disconnect } from '$lib/ws';
     import { get } from 'svelte/store';
-    import { fetchEventHistory, submitPollVote, getCsrfToken } from '$lib/api';
+    import { fetchEventHistory, submitPollVote, getCsrfToken, ensureCsrfToken } from '$lib/api';
     import { votedPollsStore, markPollAsVoted, saveNickname, getSavedNickname, hasVotedForPoll } from '$lib/storage';
 
     import BottomNav from '$lib/components/BottomNav.svelte';
@@ -48,7 +48,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
     onMount(async () => {
         if (data.error || !data.event) return;
-        await fetch('/api/csrf', { method: 'GET' });
+        await ensureCsrfToken();
         event.set(data.event);
         connect(data.event.id);
 

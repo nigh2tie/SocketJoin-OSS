@@ -76,6 +76,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
     <h3 class="text-lg font-bold mb-4 text-gray-900 border-b pb-2">CSVで一括インポート</h3>
     <div class="space-y-3">
+        <div class="rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-xs text-blue-900 space-y-1">
+            <p class="font-semibold">書き方のポイント</p>
+            <p>`poll_type` は `survey` または `quiz` を指定します。</p>
+            <p>`correct_options` は quiz のときだけ必須で、`option_1` を `1` として `1|3` のように書きます。</p>
+            <p>使わない `option_*` 列は空欄のままで大丈夫です。まずはテンプレートを開いて、サンプル行を上書きするのが簡単です。</p>
+        </div>
         <input type="file" accept=".csv" on:change={onFileChange} class="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
         <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
             <input type="checkbox" bind:checked={importDryRun} class="rounded" />

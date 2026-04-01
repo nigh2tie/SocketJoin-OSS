@@ -23,7 +23,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -40,6 +39,15 @@ func (s *Server) handleCreateEvent(w http.ResponseWriter, r *http.Request) {
 	var req CreateEventRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.jsonError(w, r, "invalid body", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Title) == "" {
+		s.jsonError(w, r, "title is required", http.StatusBadRequest)
+		return
+	}
+	if len([]rune(req.Title)) > 255 {
+		s.jsonError(w, r, "title exceeds 255 characters", http.StatusBadRequest)
 		return
 	}
 
@@ -100,7 +108,8 @@ func (s *Server) handleGetEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 type EditEventRequest struct {
-	Title string `json:"title"`
+	Title          *string `json:"title,omitempty"`
+	ShowQAOnScreen *bool   `json:"show_qa_on_screen,omitempty"`
 }
 
 func (s *Server) handleEditEvent(w http.ResponseWriter, r *http.Request) {
@@ -125,20 +134,40 @@ func (s *Server) handleEditEvent(w http.ResponseWriter, r *http.Request) {
 		s.jsonError(w, r, "invalid body", http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(req.Title) == "" {
-		s.jsonError(w, r, "title is required", http.StatusBadRequest)
+	updated := map[string]interface{}{}
+	if req.Title == nil && req.ShowQAOnScreen == nil {
+		s.jsonError(w, r, "no fields to update", http.StatusBadRequest)
 		return
 	}
 
-	if err := s.Pg.UpdateEventTitle(r.Context(), eventID, req.Title); err != nil {
-		slog.ErrorContext(r.Context(), "Failed to update event title", "error", err)
-		s.jsonError(w, r, "failed to update event", http.StatusInternalServerError)
-		return
+	if req.Title != nil {
+		title := strings.TrimSpace(*req.Title)
+		if title == "" {
+			s.jsonError(w, r, "title is required", http.StatusBadRequest)
+			return
+		}
+		if len([]rune(title)) > 255 {
+			s.jsonError(w, r, "title exceeds 255 characters", http.StatusBadRequest)
+			return
+		}
+		if err := s.Pg.UpdateEventTitle(r.Context(), eventID, title); err != nil {
+			slog.ErrorContext(r.Context(), "Failed to update event title", "error", err)
+			s.jsonError(w, r, "failed to update event", http.StatusInternalServerError)
+			return
+		}
+		updated["title"] = title
 	}
 
-	s.broadcastEventUpdate(eventID.String(), "event.updated", map[string]interface{}{
-		"title": req.Title,
-	})
+	if req.ShowQAOnScreen != nil {
+		if err := s.Pg.UpdateEventShowQAOnScreen(r.Context(), eventID, *req.ShowQAOnScreen); err != nil {
+			slog.ErrorContext(r.Context(), "Failed to update screen Q&A visibility", "error", err)
+			s.jsonError(w, r, "failed to update event", http.StatusInternalServerError)
+			return
+		}
+		updated["show_qa_on_screen"] = *req.ShowQAOnScreen
+	}
+
+	s.broadcastEventUpdate(eventID.String(), "event.updated", updated)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -207,32 +236,6 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(history)
-}
-
-func (s *Server) handleGetRanking(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	eventID, err := uuid.Parse(idStr)
-	if err != nil {
-		s.jsonError(w, r, "invalid event id", http.StatusBadRequest)
-		return
-	}
-
-	limit := 10
-	if lStr := r.URL.Query().Get("limit"); lStr != "" {
-		if n, err := strconv.Atoi(lStr); err == nil && n > 0 && n <= 100 {
-			limit = n
-		}
-	}
-
-	ranking, err := s.Pg.GetRanking(r.Context(), eventID, limit)
-	if err != nil {
-		slog.ErrorContext(r.Context(), "Failed to get ranking", "error", err)
-		s.jsonError(w, r, "failed to get ranking", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(ranking)
 }
 
 type BanRequest struct {
