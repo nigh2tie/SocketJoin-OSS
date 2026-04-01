@@ -118,4 +118,3 @@ export async function toggleUpvoteData(eventId, qid) {
         }
     });
 }
-

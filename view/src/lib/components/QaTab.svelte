@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 <script>
     import { questions } from '$lib/store';
     import { submitQuestionData, toggleUpvoteData } from '$lib/api';
+    import UpvoteIcon from '$lib/components/UpvoteIcon.svelte';
 
     /** @type {string} */
     export let eventId;
@@ -75,7 +76,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
                         <span class="qa-date">{new Date(q.created_at).toLocaleString()}</span>
                     </div>
                     <button class="upvote-btn" class:upvoted={q.is_upvoted} on:click={() => toggleUpvote(q.id)}>
-                        <span class="upvote-icon">▲</span> {q.upvotes}
+                        <UpvoteIcon size="1.1rem" /> {q.upvotes}
                     </button>
                 </div>
             {/each}
@@ -99,5 +100,4 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
     .qa-status.answered { color: #28a745; font-weight: bold; }
     .upvote-btn { position: absolute; right: 15px; top: 15px; padding: 5px 12px; background: #fff; border: 1px solid #ccc; border-radius: 20px; color: #555; font-size: 0.9em; display: flex; align-items: center; gap: 5px; cursor: pointer; transition: all 0.2s; }
     .upvote-btn.upvoted { background: #2563eb; color: white; border-color: #2563eb; }
-    .upvote-icon { font-size: 1.2em; }
 </style>
